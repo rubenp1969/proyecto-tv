@@ -1,0 +1,50 @@
+name: Compilar APK Ligero
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Crear Gradle Wrapper
+        run: |
+          if [ ! -f ./gradlew ]; then
+            gradle wrapper --gradle-version 8.9
+          fi
+          chmod +x ./gradlew
+
+      - name: Compilar Release con R8
+        run: ./gradlew assembleRelease
+
+      - name: Firmar APK
+        run: |
+          keytool -genkey -v -keystore release.keystore -alias tvkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android123 -keypass android123 \
+            -dname "CN=CleanRoom, OU=Dev, O=VE, L=Guayana, S=Bolivar, C=VE"
+          
+          UNSIGNED_APK=$(find app/build/outputs/apk/release -name "*-unsigned.apk" | head -n 1)
+          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | tail -n 1)/apksigner sign \
+            --ks release.keystore --ks-pass pass:android123 \
+            --out app-tv-movil-release.apk "$UNSIGNED_APK"
+
+      - name: Subir APK Terminado
+        uses: actions/upload-artifact@v4
+        with:
+          name: APK-Release-Universal
+          path: app-tv-movil-release.apk
